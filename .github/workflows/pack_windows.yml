@@ -32,3 +32,4 @@ jobs:
       with:
         name: document_processor_exe
         path: dist/main.exe
+
