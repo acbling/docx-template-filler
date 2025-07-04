@@ -5,11 +5,13 @@ from docx.oxml.ns import qn
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from datetime import datetime
 import os
+import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox
+import tempfile
+import pkgutil  # 用于读取内嵌资源
 
-# ====================== 样式处理函数 ======================
-
+# ========== 样式辅助函数 ==========
 def format_excel_date(excel_date):
     if not excel_date:
         return ""
@@ -26,24 +28,21 @@ def set_font_fangsong(run):
     run.font.size = Pt(10.5)
 
 def safe_fill_cell(cell, text):
-    if not text:
-        text = ""
+    text = str(text) if text else ""
     for paragraph in cell.paragraphs:
         for run in paragraph.runs:
             run.clear()
     p = cell.paragraphs[0]
-    run = p.add_run(str(text))
+    run = p.add_run(text)
     set_font_fangsong(run)
     p.alignment = WD_ALIGN_PARAGRAPH.LEFT
 
 def safe_fill_multiline(cell, text, last_line_right_align=False, first_line_indent=False):
     if not text:
         text = ""
-    for paragraph in cell.paragraphs:
-        p = paragraph._element
-        p.getparent().remove(p)
+    for p in cell.paragraphs:
+        p._element.getparent().remove(p._element)
     paragraphs = str(text).split('br') if 'br' in str(text) else [str(text)]
-    n = len(paragraphs)
     for i, para_text in enumerate(paragraphs):
         para_text = para_text.strip()
         if not para_text:
@@ -51,7 +50,7 @@ def safe_fill_multiline(cell, text, last_line_right_align=False, first_line_inde
         p = cell.add_paragraph()
         run = p.add_run(para_text)
         set_font_fangsong(run)
-        if i == n - 1 and last_line_right_align:
+        if i == len(paragraphs) - 1 and last_line_right_align:
             p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         else:
             p.alignment = WD_ALIGN_PARAGRAPH.LEFT
@@ -60,17 +59,21 @@ def safe_fill_multiline(cell, text, last_line_right_align=False, first_line_inde
 
 def center_align_table_rows(table, row_indices):
     for row_idx in row_indices:
-        row = table.rows[row_idx]
-        for cell in row.cells:
-            for paragraph in cell.paragraphs:
-                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        for cell in table.rows[row_idx].cells:
+            for p in cell.paragraphs:
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-# ====================== 处理核心逻辑 ======================
-
-def fill_template_preserve_formatting(excel_path, template_path, output_folder):
+# ========== 生成文档 ==========
+def fill_template_preserve_formatting(excel_path, output_folder):
     wb = openpyxl.load_workbook(excel_path)
     ws = wb.active
     os.makedirs(output_folder, exist_ok=True)
+
+    # 加载内置模板文件
+    template_data = pkgutil.get_data(__name__, "template.docx")
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".docx") as tmp:
+        tmp.write(template_data)
+        tmp_path = tmp.name
 
     for row_idx in range(4, ws.max_row + 1):
         if not ws.cell(row=row_idx, column=2).value:
@@ -95,7 +98,7 @@ def fill_template_preserve_formatting(excel_path, template_path, output_folder):
             '督办时间': format_excel_date(ws.cell(row=row_idx, column=17).value)
         }
 
-        doc = Document(template_path)
+        doc = Document(tmp_path)
         table = doc.tables[0]
 
         safe_fill_cell(table.cell(1, 1), data['来文单位'])
@@ -110,8 +113,7 @@ def fill_template_preserve_formatting(excel_path, template_path, output_folder):
         safe_fill_cell(table.cell(4, 1), data['来文文号'])
         safe_fill_cell(table.cell(4, 5), data['督办时间'])
         safe_fill_cell(table.cell(5, 1), data['文件标题'])
-
-        safe_fill_multiline(table.cell(6, 1), data['拟办意见'], last_line_right_align=False, first_line_indent=False)
+        safe_fill_multiline(table.cell(6, 1), data['拟办意见'])
 
         center_align_table_rows(table, [0, 1, 2, 3])
 
@@ -126,37 +128,26 @@ def fill_template_preserve_formatting(excel_path, template_path, output_folder):
 
         文件标题 = str(data['文件标题']) if data['文件标题'] else "无标题"
         文件标题短 = 文件标题[:30] + ('…' if len(文件标题) > 30 else '')
-
         output_filename = f"{收文日期_str}党委组织部（党校）收文处理笺（{文件标题短}）.docx"
-        output_path = os.path.join(output_folder, output_filename)
-        doc.save(output_path)
+        doc.save(os.path.join(output_folder, output_filename))
 
-# ====================== 图形界面入口 ======================
-
+# ========== GUI 主程序 ==========
 def main():
     root = tk.Tk()
     root.withdraw()
-
     messagebox.showinfo("收文处理笺生成器", "请选择 Excel 文件")
     excel_file = filedialog.askopenfilename(filetypes=[("Excel 文件", "*.xlsx")])
     if not excel_file:
         return
-
-    messagebox.showinfo("请选择 Word 模板")
-    word_template = filedialog.askopenfilename(filetypes=[("Word 模板", "*.docx")])
-    if not word_template:
-        return
-
-    messagebox.showinfo("选择输出目录")
-    output_dir = filedialog.askdirectory()
+    output_dir = filedialog.askdirectory(title="选择输出目录")
     if not output_dir:
         return
 
     try:
-        fill_template_preserve_formatting(excel_file, word_template, output_dir)
-        messagebox.showinfo("完成", f"✅ 收文处理笺已生成至：{output_dir}")
+        fill_template_preserve_formatting(excel_file, output_dir)
+        messagebox.showinfo("完成", f"✅ 已生成 Word 文件到：{output_dir}")
     except Exception as e:
-        messagebox.showerror("出错了", str(e))
+        messagebox.showerror("出错", str(e))
 
 if __name__ == "__main__":
     main()
