@@ -79,7 +79,7 @@ class App:
         self.root.title("收文处理笺生成器")
 
         self.excel_path = ""
-        self.template_path = "template.docx"
+        self.template_path = os.path.abspath("template.docx")
         self.entries = []
         self.checkbox_vars = []
 
