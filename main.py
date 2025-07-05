@@ -67,7 +67,7 @@ def extract_entries(excel_path):
     wb = openpyxl.load_workbook(excel_path)
     ws = wb.active
     entries = []
-    for row_idx in range(4, ws.max_row + 1):
+    for row_idx in range(5, ws.max_row + 1):
         title = str(ws.cell(row=row_idx, column=12).value or "").strip()
         if not title:  # 标题为空就跳过
             continue
@@ -215,7 +215,7 @@ def select_output_dir():
 def run_fill():
     excel_path = excel_path_var.get()
     output_folder = output_dir_var.get()
-    template_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "模板.docx")
+    template_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "template.docx")
 
     if not excel_path or not os.path.exists(excel_path):
         messagebox.showerror("错误", "请选择有效的 Excel 文件！")
