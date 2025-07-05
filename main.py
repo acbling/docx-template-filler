@@ -158,6 +158,7 @@ excel_path_var = tk.StringVar()
 output_dir_var = tk.StringVar()
 entry_vars = []
 entries = []
+filtered_entries = []
 
 frame = tk.Frame(root, padx=10, pady=10)
 frame.pack()
@@ -173,8 +174,22 @@ tk.Button(frame, text="选择", command=lambda: select_output_dir()).grid(row=1,
 tk.Label(frame, text="选择要生成的条目：").grid(row=2, column=0, sticky="ne", pady=10)
 
 entries_frame = tk.Frame(frame)
-entries_frame.grid(row=2, column=1, pady=10, sticky="w")
+entries_frame.grid(row=2, column=1, columnspan=2, pady=10, sticky="w")
 
+# 搜索框
+search_var = tk.StringVar()
+tk.Label(entries_frame, text="搜索：").pack(anchor="w")
+search_entry = tk.Entry(entries_frame, textvariable=search_var, width=50)
+search_entry.pack(anchor="w", pady=5)
+search_entry.bind("<KeyRelease>", lambda e: refresh_checkboxes())
+
+# 全选/全不选按钮
+btn_frame = tk.Frame(entries_frame)
+btn_frame.pack(anchor="w", pady=5)
+tk.Button(btn_frame, text="全选", command=lambda: select_all(True)).pack(side="left", padx=5)
+tk.Button(btn_frame, text="全不选", command=lambda: select_all(False)).pack(side="left", padx=5)
+
+# 可滚动复选框列表
 canvas = tk.Canvas(entries_frame, width=460, height=220, bg="#ffffff")
 scrollbar = tk.Scrollbar(entries_frame, orient="vertical", command=canvas.yview)
 font = tkFont.Font(family="微软雅黑", size=10)
@@ -191,22 +206,41 @@ canvas.configure(yscrollcommand=scrollbar.set)
 canvas.pack(side="left", fill="both", expand=True)
 scrollbar.pack(side="right", fill="y")
 
+# ---------------- 函数部分 ------------------
 def select_excel():
     path = filedialog.askopenfilename(title="选择 Excel 文件", filetypes=[("Excel 文件", "*.xlsx *.xls")])
     if path:
         excel_path_var.set(path)
-        for widget in scrollable_frame.winfo_children():
-            widget.destroy()
-        entry_vars.clear()
-        entries.clear()
-        for row_idx, label in extract_entries(path):
-            var = tk.BooleanVar()
+        load_entries(path)
+
+def load_entries(path):
+    for widget in scrollable_frame.winfo_children():
+        widget.destroy()
+    entry_vars.clear()
+    entries.clear()
+    for row_idx, label in extract_entries(path):
+        var = tk.BooleanVar()
+        entries.append((row_idx, label, var))
+    refresh_checkboxes()
+
+def refresh_checkboxes():
+    keyword = search_var.get().lower().strip()
+    for widget in scrollable_frame.winfo_children():
+        widget.destroy()
+
+    filtered_entries.clear()
+    for row_idx, label, var in entries:
+        if keyword in label.lower():
             chk = tk.Checkbutton(scrollable_frame, text=label, variable=var, anchor="w", justify="left",
                                  padx=10, font=font, width=60, bg="#f9f9f9", relief="flat",
                                  highlightthickness=0, bd=0)
             chk.pack(fill="x", anchor="w", pady=1)
-            entry_vars.append(var)
-            entries.append((row_idx, label))
+            filtered_entries.append((row_idx, label, var))
+
+def select_all(state=True):
+    for _, _, var in entries:
+        var.set(state)
+    refresh_checkboxes()
 
 def select_output_dir():
     path = filedialog.askdirectory(title="选择输出文件夹")
@@ -228,7 +262,7 @@ def run_fill():
         messagebox.showerror("错误", "模板文件未找到！")
         return
 
-    selected_rows = [entries[i][0] for i, var in enumerate(entry_vars) if var.get()]
+    selected_rows = [row_idx for row_idx, _, var in entries if var.get()]
     if not selected_rows:
         messagebox.showwarning("提示", "请选择要生成的条目")
         return
