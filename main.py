@@ -44,7 +44,6 @@ def safe_fill_cell(cell, text):
 def safe_fill_multiline(cell, text, last_line_right_align=False, first_line_indent=False):
     if not text:
         text = ""
-    # 清空已有段落
     for paragraph in cell.paragraphs[:]:
         p = paragraph._element
         p.getparent().remove(p)
@@ -69,7 +68,7 @@ def extract_entries(excel_path):
     entries = []
     for row_idx in range(5, ws.max_row + 1):
         title = str(ws.cell(row=row_idx, column=12).value or "").strip()
-        if not title:  # 标题为空就跳过
+        if not title:
             continue
         date_cell = ws.cell(row=row_idx, column=4).value
         try:
@@ -91,7 +90,6 @@ def fill_template_preserve_formatting(excel_path, template_path, output_folder, 
     for row_idx in selected_rows:
         if not ws.cell(row=row_idx, column=2).value:
             continue
-
         data = {
             '来文单位': ws.cell(row=row_idx, column=2).value,
             '发文日期': format_excel_date(ws.cell(row=row_idx, column=3).value),
@@ -147,18 +145,22 @@ def fill_template_preserve_formatting(excel_path, template_path, output_folder, 
         doc.save(output_path)
         print(f"✅ 已生成 {output_path}")
 
-# =========== GUI 部分 ============
+# ========== GUI 界面部分 ==========
 root = tk.Tk()
-root.title("收文处理笺生成工具（多选模式）")
+root.title("收文处理笺生成工具（多选优化）")
+root.geometry("720x600")
+root.eval('tk::PlaceWindow . center')
+root.option_add("*Font", ("Microsoft YaHei", 10))
 
 excel_path_var = tk.StringVar()
 output_dir_var = tk.StringVar()
+search_var = tk.StringVar()
 
-entry_vars = []  # BooleanVar 列表
-entries = []     # (row_idx, label) 列表
+entry_vars = []
+entries = []
 
 frame = tk.Frame(root, padx=10, pady=10)
-frame.pack()
+frame.pack(fill="both", expand=True)
 
 tk.Label(frame, text="Excel 文件：").grid(row=0, column=0, sticky="e")
 tk.Entry(frame, textvariable=excel_path_var, width=50).grid(row=0, column=1)
@@ -170,32 +172,36 @@ tk.Button(frame, text="选择", command=lambda: select_output_dir()).grid(row=1,
 
 tk.Label(frame, text="选择要生成的条目：").grid(row=2, column=0, sticky="ne", pady=10)
 
-# 带滚动条的框架，装 Checkbutton
+# 滚动区域和操作按钮区域
 entries_frame = tk.Frame(frame)
 entries_frame.grid(row=2, column=1, pady=10, sticky="w")
 
-canvas = tk.Canvas(entries_frame, width=450, height=200)
+search_box = tk.Frame(entries_frame)
+search_box.pack(fill="x")
+
+tk.Entry(search_box, textvariable=search_var, width=30).pack(side="left", padx=2)
+tk.Button(search_box, text="搜索", command=lambda: filter_entries()).pack(side="left", padx=2)
+tk.Button(search_box, text="全选", command=lambda: set_all_checks(True)).pack(side="left", padx=2)
+tk.Button(search_box, text="全不选", command=lambda: set_all_checks(False)).pack(side="left", padx=2)
+
+canvas = tk.Canvas(entries_frame, width=450, height=300)
 scrollbar = tk.Scrollbar(entries_frame, orient="vertical", command=canvas.yview)
 scrollable_frame = tk.Frame(canvas)
 
-scrollable_frame.bind(
-    "<Configure>",
-    lambda e: canvas.configure(
-        scrollregion=canvas.bbox("all")
-    )
-)
-
+scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
 canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
 canvas.configure(yscrollcommand=scrollbar.set)
-
 canvas.pack(side="left", fill="both", expand=True)
 scrollbar.pack(side="right", fill="y")
+
+def _on_mousewheel(event):
+    canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+canvas.bind_all("<MouseWheel>", _on_mousewheel)
 
 def select_excel():
     path = filedialog.askopenfilename(title="选择 Excel 文件", filetypes=[("Excel 文件", "*.xlsx *.xls")])
     if path:
         excel_path_var.set(path)
-        # 清空之前勾选框
         for widget in scrollable_frame.winfo_children():
             widget.destroy()
         entry_vars.clear()
@@ -206,6 +212,18 @@ def select_excel():
             chk.pack(fill="x", anchor="w")
             entry_vars.append(var)
             entries.append((row_idx, label))
+
+def filter_entries():
+    keyword = search_var.get().strip().lower()
+    for chk, (_, label) in zip(scrollable_frame.winfo_children(), entries):
+        if keyword in label.lower():
+            chk.pack(fill="x", anchor="w")
+        else:
+            chk.pack_forget()
+
+def set_all_checks(value):
+    for var in entry_vars:
+        var.set(value)
 
 def select_output_dir():
     path = filedialog.askdirectory(title="选择输出文件夹")
