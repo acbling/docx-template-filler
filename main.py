@@ -1,20 +1,19 @@
+import os
 import openpyxl
 from docx import Document
 from docx.shared import Pt
 from docx.oxml.ns import qn
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from datetime import datetime
-import os
 import tkinter as tk
-from tkinter import filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 
-# --------- 工具函数 ---------
-def center_align_table_rows(table, row_indices):
-    for row_idx in row_indices:
-        row = table.rows[row_idx]
-        for cell in row.cells:
-            for paragraph in cell.paragraphs:
-                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+# ====== 字体格式设置函数 ======
+
+def set_font_fangsong(run):
+    run.font.name = '仿宋_GB2312'
+    run._element.rPr.rFonts.set(qn('w:eastAsia'), '仿宋_GB2312')
+    run.font.size = Pt(10.5)
 
 def format_excel_date(excel_date):
     if not excel_date:
@@ -26,10 +25,12 @@ def format_excel_date(excel_date):
     except:
         return str(excel_date)
 
-def set_font_fangsong(run):
-    run.font.name = '仿宋_GB2312'
-    run._element.rPr.rFonts.set(qn('w:eastAsia'), '仿宋_GB2312')
-    run.font.size = Pt(10.5)
+def center_align_table_rows(table, row_indices):
+    for row_idx in row_indices:
+        row = table.rows[row_idx]
+        for cell in row.cells:
+            for paragraph in cell.paragraphs:
+                paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
 def safe_fill_cell(cell, text):
     if not text:
@@ -48,8 +49,10 @@ def safe_fill_multiline(cell, text, last_line_right_align=False, first_line_inde
     for paragraph in cell.paragraphs:
         p = paragraph._element
         p.getparent().remove(p)
+
     paragraphs = str(text).split('br') if 'br' in str(text) else [str(text)]
     n = len(paragraphs)
+
     for i, para_text in enumerate(paragraphs):
         para_text = para_text.strip()
         if not para_text:
@@ -57,23 +60,23 @@ def safe_fill_multiline(cell, text, last_line_right_align=False, first_line_inde
         p = cell.add_paragraph()
         run = p.add_run(para_text)
         set_font_fangsong(run)
+
         if i == n - 1 and last_line_right_align:
             p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
         else:
             p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+
         if i == 0 and first_line_indent:
             p.paragraph_format.first_line_indent = Pt(21)
 
-# --------- 主要函数 ---------
-def fill_template_preserve_formatting(excel_path, template_path, output_folder, selected_rows=None):
+# ====== 核心文档生成函数 ======
+
+def fill_template_preserve_formatting(excel_path, output_folder, selected_rows):
     wb = openpyxl.load_workbook(excel_path)
     ws = wb.active
     os.makedirs(output_folder, exist_ok=True)
 
-    for row_idx in range(5, ws.max_row + 1):
-        if selected_rows and row_idx not in selected_rows:
-            continue
-
+    for row_idx in selected_rows:
         if not ws.cell(row=row_idx, column=2).value:
             continue
 
@@ -96,7 +99,7 @@ def fill_template_preserve_formatting(excel_path, template_path, output_folder, 
             '督办时间': format_excel_date(ws.cell(row=row_idx, column=17).value)
         }
 
-        doc = Document(template_path)
+        doc = Document("template.docx")  # 模板固定路径
         table = doc.tables[0]
 
         safe_fill_cell(table.cell(1, 1), data['来文单位'])
@@ -115,95 +118,90 @@ def fill_template_preserve_formatting(excel_path, template_path, output_folder, 
         safe_fill_cell(table.cell(4, 5), data['督办时间'])
 
         safe_fill_cell(table.cell(5, 1), data['文件标题'])
-
         safe_fill_multiline(table.cell(6, 1), data['拟办意见'])
+
         center_align_table_rows(table, [0, 1, 2, 3])
 
+        # 输出文件名
         收文日期 = ws.cell(row=row_idx, column=4).value
-        if isinstance(收文日期, datetime):
-            收文日期_str = 收文日期.strftime('%Y%m%d')
-        else:
-            try:
+        try:
+            if isinstance(收文日期, datetime):
+                收文日期_str = 收文日期.strftime('%Y%m%d')
+            else:
                 收文日期_str = datetime.fromordinal(int(收文日期) + 693594).strftime('%Y%m%d')
-            except:
-                收文日期_str = "日期未知"
+        except:
+            收文日期_str = "日期未知"
 
         文件标题 = str(data['文件标题']) if data['文件标题'] else "无标题"
-        文件标题短 = 文件标题[:30] + ("…" if len(文件标题) > 30 else "")
-        output_filename = f"{收文日期_str}党委组织部（党校）收文处理笺（{文件标题短}）.docx"
-        output_path = os.path.join(output_folder, output_filename)
+        文件标题短 = 文件标题[:30] + ('…' if len(文件标题) > 30 else '')
+        filename = f"{收文日期_str}党委组织部收文处理笺（{文件标题短}）.docx"
+        output_path = os.path.join(output_folder, filename)
 
         doc.save(output_path)
-        print(f"✅ 已生成 {output_path}")
+        print(f"✅ 已生成：{output_path}")
 
-# --------- 图形界面 ---------
-class EntrySelectorApp:
+# ====== 图形界面 ======
+
+class App:
     def __init__(self, master):
         self.master = master
-        self.master.title("选择需要生成的收文处理条目")
-        self.entries = []
-        self.checkbox_vars = []
+        self.master.title("收文处理笺生成器")
+        self.master.geometry("600x500")
+        ttk.Label(master, text="📄 收文处理笺生成工具", font=("微软雅黑", 14)).pack(pady=10)
 
-        self.excel_path = filedialog.askopenfilename(title="选择Excel文件", filetypes=[("Excel 文件", "*.xlsx")])
-        if not self.excel_path:
-            messagebox.showerror("错误", "未选择 Excel 文件")
-            master.destroy()
-            return
+        ttk.Button(master, text="选择 Excel 文件", command=self.load_excel).pack(pady=5)
+        self.list_frame = ttk.Frame(master)
+        self.list_frame.pack(fill="both", expand=True)
 
-        self.template_path = filedialog.askopenfilename(title="选择模板 Word 文件", filetypes=[("Word 文件", "*.docx")])
-        if not self.template_path:
-            messagebox.showerror("错误", "未选择模板文件")
-            master.destroy()
-            return
+        self.canvas = tk.Canvas(self.list_frame)
+        self.scrollbar = ttk.Scrollbar(self.list_frame, orient="vertical", command=self.canvas.yview)
+        self.scrollable_frame = ttk.Frame(self.canvas)
 
-        self.output_dir = filedialog.askdirectory(title="选择输出目录")
+        self.scrollable_frame.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
+        self.canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
-        self.extract_entries()
-
-        self.scroll_canvas = tk.Canvas(master)
-        self.frame = tk.Frame(self.scroll_canvas)
-        self.scrollbar = tk.Scrollbar(master, orient="vertical", command=self.scroll_canvas.yview)
-        self.scroll_canvas.configure(yscrollcommand=self.scrollbar.set)
-
+        self.canvas.pack(side="left", fill="both", expand=True)
         self.scrollbar.pack(side="right", fill="y")
-        self.scroll_canvas.pack(side="left", fill="both", expand=True)
-        self.scroll_canvas.create_window((0,0), window=self.frame, anchor="nw")
-        self.frame.bind("<Configure>", lambda e: self.scroll_canvas.configure(scrollregion=self.scroll_canvas.bbox("all")))
 
-        for idx, label in enumerate(self.entries):
+        self.checkbox_vars = []
+        self.entries = []
+        ttk.Button(master, text="选择输出文件夹并生成", command=self.generate).pack(pady=10)
+
+    def load_excel(self):
+        path = filedialog.askopenfilename(title="选择Excel文件", filetypes=[("Excel 文件", "*.xlsx")])
+        if not path:
+            return
+        self.excel_path = path
+        wb = openpyxl.load_workbook(path)
+        ws = wb.active
+        self.entries.clear()
+        for widget in self.scrollable_frame.winfo_children():
+            widget.destroy()
+        for row_idx in range(5, ws.max_row + 1):
+            date = ws.cell(row=row_idx, column=4).value
+            title = str(ws.cell(row=row_idx, column=12).value or "无标题")
+            label = f"{format_excel_date(date)} | {title}"
             var = tk.BooleanVar()
-            cb = tk.Checkbutton(self.frame, text=label["label"], variable=var)
+            cb = ttk.Checkbutton(self.scrollable_frame, text=label, variable=var)
             cb.pack(anchor="w")
             self.checkbox_vars.append(var)
+            self.entries.append(row_idx)
 
-        tk.Button(master, text="生成 Word", command=self.generate_selected).pack(pady=10)
-
-    def extract_entries(self):
-        wb = openpyxl.load_workbook(self.excel_path)
-        ws = wb.active
-        for row_idx in range(5, ws.max_row + 1):
-            title = str(ws.cell(row=row_idx, column=12).value or "无标题")
-            date = ws.cell(row=row_idx, column=4).value
-            date_str = format_excel_date(date)
-            label = f"{date_str} | {title}"
-            self.entries.append({
-                "label": label,
-                "row_idx": row_idx
-            })
-
-    def generate_selected(self):
-        selected_indices = [e["row_idx"] for i, e in enumerate(self.entries) if self.checkbox_vars[i].get()]
-        if not selected_indices:
+    def generate(self):
+        output_dir = filedialog.askdirectory(title="选择保存目录")
+        if not output_dir:
+            return
+        selected_rows = [self.entries[i] for i, var in enumerate(self.checkbox_vars) if var.get()]
+        if not selected_rows:
             messagebox.showwarning("未选择", "请至少选择一条记录")
             return
-        fill_template_preserve_formatting(
-            self.excel_path, self.template_path, self.output_dir,
-            selected_rows=selected_indices
-        )
-        messagebox.showinfo("完成", "已生成所选 Word 文件")
+        fill_template_preserve_formatting(self.excel_path, output_dir, selected_rows)
+        messagebox.showinfo("完成", "Word 文件已生成！")
 
-# --------- 启动程序 ---------
+# ====== 主入口 ======
+
 if __name__ == "__main__":
     root = tk.Tk()
-    app = EntrySelectorApp(root)
+    app = App(root)
     root.mainloop()
