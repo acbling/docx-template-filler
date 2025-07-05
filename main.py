@@ -7,7 +7,9 @@ from datetime import datetime
 import os
 import tkinter as tk
 from tkinter import filedialog, messagebox
+import tkinter.font as tkFont
 
+# ========================== Word 填充辅助函数 ==============================
 def center_align_table_rows(table, row_indices):
     for row_idx in row_indices:
         row = table.rows[row_idx]
@@ -62,6 +64,7 @@ def safe_fill_multiline(cell, text, last_line_right_align=False, first_line_inde
         if i == 0 and first_line_indent:
             p.paragraph_format.first_line_indent = Pt(21)
 
+# ========================== Excel 数据读取函数 ==============================
 def extract_entries(excel_path):
     wb = openpyxl.load_workbook(excel_path)
     ws = wb.active
@@ -82,6 +85,7 @@ def extract_entries(excel_path):
         entries.append((row_idx, label))
     return entries
 
+# ========================== Word 文档生成函数 ===============================
 def fill_template_preserve_formatting(excel_path, template_path, output_folder, selected_rows):
     wb = openpyxl.load_workbook(excel_path)
     ws = wb.active
@@ -90,6 +94,7 @@ def fill_template_preserve_formatting(excel_path, template_path, output_folder, 
     for row_idx in selected_rows:
         if not ws.cell(row=row_idx, column=2).value:
             continue
+
         data = {
             '来文单位': ws.cell(row=row_idx, column=2).value,
             '发文日期': format_excel_date(ws.cell(row=row_idx, column=3).value),
@@ -145,22 +150,17 @@ def fill_template_preserve_formatting(excel_path, template_path, output_folder, 
         doc.save(output_path)
         print(f"✅ 已生成 {output_path}")
 
-# ========== GUI 界面部分 ==========
+# ========================== GUI 部分 ========================================
 root = tk.Tk()
-root.title("收文处理笺生成工具（多选优化）")
-root.geometry("720x600")
-root.eval('tk::PlaceWindow . center')
-root.option_add("*Font", ("Microsoft YaHei", 10))
+root.title("收文处理笺生成工具")
 
 excel_path_var = tk.StringVar()
 output_dir_var = tk.StringVar()
-search_var = tk.StringVar()
-
 entry_vars = []
 entries = []
 
 frame = tk.Frame(root, padx=10, pady=10)
-frame.pack(fill="both", expand=True)
+frame.pack()
 
 tk.Label(frame, text="Excel 文件：").grid(row=0, column=0, sticky="e")
 tk.Entry(frame, textvariable=excel_path_var, width=50).grid(row=0, column=1)
@@ -172,31 +172,24 @@ tk.Button(frame, text="选择", command=lambda: select_output_dir()).grid(row=1,
 
 tk.Label(frame, text="选择要生成的条目：").grid(row=2, column=0, sticky="ne", pady=10)
 
-# 滚动区域和操作按钮区域
 entries_frame = tk.Frame(frame)
 entries_frame.grid(row=2, column=1, pady=10, sticky="w")
 
-search_box = tk.Frame(entries_frame)
-search_box.pack(fill="x")
-
-tk.Entry(search_box, textvariable=search_var, width=30).pack(side="left", padx=2)
-tk.Button(search_box, text="搜索", command=lambda: filter_entries()).pack(side="left", padx=2)
-tk.Button(search_box, text="全选", command=lambda: set_all_checks(True)).pack(side="left", padx=2)
-tk.Button(search_box, text="全不选", command=lambda: set_all_checks(False)).pack(side="left", padx=2)
-
-canvas = tk.Canvas(entries_frame, width=450, height=300)
+canvas = tk.Canvas(entries_frame, width=460, height=220, bg="#ffffff")
 scrollbar = tk.Scrollbar(entries_frame, orient="vertical", command=canvas.yview)
-scrollable_frame = tk.Frame(canvas)
+font = tkFont.Font(family="微软雅黑", size=10)
+scrollable_frame = tk.Frame(canvas, bg="#f9f9f9", bd=1, relief="solid")
 
-scrollable_frame.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+scrollable_frame.bind(
+    "<Configure>",
+    lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+)
+
 canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
 canvas.configure(yscrollcommand=scrollbar.set)
+
 canvas.pack(side="left", fill="both", expand=True)
 scrollbar.pack(side="right", fill="y")
-
-def _on_mousewheel(event):
-    canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-canvas.bind_all("<MouseWheel>", _on_mousewheel)
 
 def select_excel():
     path = filedialog.askopenfilename(title="选择 Excel 文件", filetypes=[("Excel 文件", "*.xlsx *.xls")])
@@ -208,22 +201,12 @@ def select_excel():
         entries.clear()
         for row_idx, label in extract_entries(path):
             var = tk.BooleanVar()
-            chk = tk.Checkbutton(scrollable_frame, text=label, variable=var, anchor="w", justify="left")
-            chk.pack(fill="x", anchor="w")
+            chk = tk.Checkbutton(scrollable_frame, text=label, variable=var, anchor="w", justify="left",
+                                 padx=10, font=font, width=60, bg="#f9f9f9", relief="flat",
+                                 highlightthickness=0, bd=0)
+            chk.pack(fill="x", anchor="w", pady=1)
             entry_vars.append(var)
             entries.append((row_idx, label))
-
-def filter_entries():
-    keyword = search_var.get().strip().lower()
-    for chk, (_, label) in zip(scrollable_frame.winfo_children(), entries):
-        if keyword in label.lower():
-            chk.pack(fill="x", anchor="w")
-        else:
-            chk.pack_forget()
-
-def set_all_checks(value):
-    for var in entry_vars:
-        var.set(value)
 
 def select_output_dir():
     path = filedialog.askdirectory(title="选择输出文件夹")
