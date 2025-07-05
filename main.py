@@ -80,7 +80,7 @@ def fill_template_preserve_formatting(excel_path, template_path, output_folder):
     ws = wb.active
     os.makedirs(output_folder, exist_ok=True)
 
-    for row_idx in range(4, ws.max_row + 1):
+    for row_idx in range(5, ws.max_row + 1):
         if not ws.cell(row=row_idx, column=2).value:
             continue
 
